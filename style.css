@@ -946,16 +946,17 @@ body.light-mode .auth-box {
 /* ============ INPUT CONTAINER ============ */
 
 .input-container {
-    display: flex;
+    display: flex !important;
     align-items: flex-end;
     gap: 10px;
     padding: 14px 20px;
     background: var(--bg-secondary);
-    border-top: 1px solid var(--border-color);
+    border-top: 2px solid var(--border-color);
     flex-shrink: 0;
     position: sticky;
     bottom: 0;
     z-index: 100;
+    min-height: 70px;
 }
 
 .input-actions {
@@ -999,6 +1000,9 @@ body.light-mode .auth-box {
     resize: none;
     max-height: 100px;
     transition: all 0.2s;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
 }
 
 #messageInput:focus {
@@ -1125,6 +1129,37 @@ body.light-mode .auth-box {
     }
     .auth-logo {
         font-size: 2.5rem;
+    }
+    .input-container {
+        padding: 12px 14px !important;
+        gap: 8px;
+        background: var(--bg-secondary) !important;
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        z-index: 1000 !important;
+        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
+        min-height: 65px;
+        display: flex !important;
+    }
+    .messages-container {
+        padding-bottom: 85px !important;
+        /* Space for fixed input */
+    }
+    #messageInput {
+        font-size: 16px !important;
+        /* Prevent iOS zoom */
+        padding: 10px 12px !important;
+        min-height: 42px;
+    }
+    .send-btn {
+        min-width: 42px;
+        min-height: 42px;
+    }
+    .input-btn {
+        min-width: 38px;
+        min-height: 38px;
     }
     .auth-title {
         font-size: 1.75rem;
