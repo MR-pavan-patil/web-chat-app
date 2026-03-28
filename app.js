@@ -1,697 +1,283 @@
-// ============================================
-// 🔥 ULTIMATE REAL-TIME CHAT APP
-// ============================================
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { auth, db, storage } from './firebase-config.js';
-import {
-    createUserWithEmailAndPassword,
-    signInWithEmailAndPassword,
-    onAuthStateChanged,
-    signOut
-} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import {
-    collection,
-    addDoc,
-    query,
-    orderBy,
-    onSnapshot,
-    serverTimestamp,
-    limit,
-    doc,
-    setDoc,
-    deleteDoc,
-    updateDoc,
-    where,
-    getDocs
-} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-import {
-    ref,
-    uploadBytes,
-    getDownloadURL
-} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+const SUPABASE_URL = "https://YOUR-PROJECT-ID.supabase.co";
+const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
 
-// ============ DOM ELEMENTS ============
-const authScreen = document.getElementById('authScreen');
-const chatScreen = document.getElementById('chatScreen');
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Auth Elements
-const authTabs = document.querySelectorAll('.auth-tab');
-const loginForm = document.getElementById('loginForm');
-const signupForm = document.getElementById('signupForm');
-const loginBtn = document.getElementById('loginBtn');
-const signupBtn = document.getElementById('signupBtn');
-const authStatus = document.getElementById('authStatus');
+const authSection = document.getElementById("authSection");
+const appSection = document.getElementById("appSection");
+const loginForm = document.getElementById("loginForm");
+const authMessage = document.getElementById("authMessage");
+const roleSelect = document.getElementById("role");
+const welcomeTitle = document.getElementById("welcomeTitle");
+const welcomeMeta = document.getElementById("welcomeMeta");
 
-const loginEmail = document.getElementById('loginEmail');
-const loginPassword = document.getElementById('loginPassword');
-const loginUsername = document.getElementById('loginUsername');
-const signupEmail = document.getElementById('signupEmail');
-const signupPassword = document.getElementById('signupPassword');
-const signupUsername = document.getElementById('signupUsername');
+const refreshBtn = document.getElementById("refreshBtn");
+const logoutBtn = document.getElementById("logoutBtn");
 
-// Chat Elements
-const sidebar = document.getElementById('sidebar');
-const mobileMenuBtn = document.getElementById('mobileMenuBtn');
-const sidebarToggle = document.getElementById('sidebarToggle');
-const sidebarAvatar = document.getElementById('sidebarAvatar');
-const sidebarUsername = document.getElementById('sidebarUsername');
-const headerAvatar = document.getElementById('headerAvatar');
-const currentRoomName = document.getElementById('currentRoomName');
-const roomDescription = document.getElementById('roomDescription');
+const announcementList = document.getElementById("announcementList");
+const assignmentList = document.getElementById("assignmentList");
+const attendanceList = document.getElementById("attendanceList");
+const gradeList = document.getElementById("gradeList");
 
-const messagesContainer = document.getElementById('messagesContainer');
-const messageInput = document.getElementById('messageInput');
-const sendBtn = document.getElementById('sendBtn');
-const charCount = document.getElementById('charCount');
+const adminNoticeCard = document.getElementById("adminNoticeCard");
+const teacherAssignmentCard = document.getElementById("teacherAssignmentCard");
+const teacherAttendanceCard = document.getElementById("teacherAttendanceCard");
+const teacherGradeCard = document.getElementById("teacherGradeCard");
 
-const typingIndicator = document.getElementById('typingIndicator');
-const typingText = document.getElementById('typingText');
+const announcementForm = document.getElementById("announcementForm");
+const assignmentForm = document.getElementById("assignmentForm");
+const attendanceForm = document.getElementById("attendanceForm");
+const gradeForm = document.getElementById("gradeForm");
 
-const searchBtn = document.getElementById('searchBtn');
-const searchBar = document.getElementById('searchBar');
-const searchInput = document.getElementById('searchInput');
-const closeSearch = document.getElementById('closeSearch');
-
-const themeToggle = document.getElementById('themeToggle');
-const notificationToggle = document.getElementById('notificationToggle');
-const logoutBtn = document.getElementById('logoutBtn');
-
-const emojiBtn = document.getElementById('emojiBtn');
-const emojiPicker = document.getElementById('emojiPicker');
-const closeEmoji = document.getElementById('closeEmoji');
-
-const fileBtn = document.getElementById('fileBtn');
-const fileInput = document.getElementById('fileInput');
-
-const roomButtons = document.querySelectorAll('.room-item');
-const onlineUsers = document.getElementById('onlineUsers');
-const onlineCount = document.getElementById('onlineCount');
-
-const notificationSound = document.getElementById('notificationSound');
-
-// ============ STATE VARIABLES ============
-let currentUser = null;
-let currentRoom = 'general';
-let displayName = '';
-let unsubscribeMessages = null;
-let unsubscribeOnline = null;
-let typingTimeout = null;
-let notificationsEnabled = true;
-let lastMessageTime = 0;
-
-// ============ ROOM DESCRIPTIONS ============
-const roomDescriptions = {
-    general: 'General discussion for everyone',
-    tech: 'Talk about technology and coding',
-    random: 'Random thoughts and fun conversations',
-    gaming: 'Discuss your favorite games',
-    music: 'Share and discover music'
+let state = {
+  user: null,
+  profile: null,
 };
 
-// ============ INITIALIZE APP ============
-function init() {
-    console.log('🚀 Initializing Ultimate Chat App...');
+const roleCanManageAcademic = (role) => role === "teacher" || role === "admin";
 
-    // Load theme
-    initTheme();
-
-    // Auth tab switching
-    authTabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            const tabName = tab.dataset.tab;
-            switchAuthTab(tabName);
-        });
-    });
-
-    // Auth button listeners
-    loginBtn.addEventListener('click', handleLogin);
-    signupBtn.addEventListener('click', handleSignup);
-
-    // Enter key for auth
-    [loginEmail, loginPassword, loginUsername].forEach(input => {
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') handleLogin();
-        });
-    });
-
-    [signupEmail, signupPassword, signupUsername].forEach(input => {
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') handleSignup();
-        });
-    });
-
-    // Chat listeners
-    sendBtn.addEventListener('click', sendMessage);
-    messageInput.addEventListener('input', handleTyping);
-    messageInput.addEventListener('keypress', handleKeyPress);
-
-    logoutBtn.addEventListener('click', handleLogout);
-    themeToggle.addEventListener('click', toggleTheme);
-
-    // Room switching
-    roomButtons.forEach(btn => {
-        btn.addEventListener('click', () => switchRoom(btn.dataset.room));
-    });
-
-    // Search
-    searchBtn.addEventListener('click', () => {
-        searchBar.style.display = 'flex';
-        searchInput.focus();
-    });
-
-    closeSearch.addEventListener('click', () => {
-        searchBar.style.display = 'none';
-        searchInput.value = '';
-    });
-
-    searchInput.addEventListener('input', handleSearch);
-
-    // Emoji picker
-    emojiBtn.addEventListener('click', () => {
-        emojiPicker.style.display = emojiPicker.style.display === 'none' ? 'block' : 'none';
-    });
-
-    closeEmoji.addEventListener('click', () => {
-        emojiPicker.style.display = 'none';
-    });
-
-    document.querySelectorAll('.emoji-grid span').forEach(emoji => {
-        emoji.addEventListener('click', () => {
-            messageInput.value += emoji.textContent;
-            updateCharCount();
-            messageInput.focus();
-        });
-    });
-
-    // File upload
-    // fileBtn.addEventListener('click', () => fileInput.click());
-    // fileInput.addEventListener('change', handleFileUpload);
-
-    // Mobile menu
-    mobileMenuBtn.addEventListener('click', () => {
-        sidebar.classList.toggle('active');
-    });
-
-    // Notifications
-    notificationToggle.addEventListener('click', () => {
-        notificationsEnabled = !notificationsEnabled;
-        const icon = notificationToggle.querySelector('i');
-        icon.className = notificationsEnabled ? 'fas fa-bell' : 'fas fa-bell-slash';
-        showToast(notificationsEnabled ? 'Notifications enabled' : 'Notifications disabled');
-    });
-
-    console.log('✅ App initialized!');
+function showAuthMessage(message, isError = false) {
+  authMessage.textContent = message;
+  authMessage.style.color = isError ? "#d73a49" : "#146c2e";
 }
 
-// ============ THEME MANAGEMENT ============
-function initTheme() {
-    const savedTheme = localStorage.getItem('chatTheme');
-    if (savedTheme === 'light') {
-        document.body.classList.add('light-mode');
-        themeToggle.querySelector('i').className = 'fas fa-sun';
-    }
+function toggleRoleCards(role) {
+  adminNoticeCard.classList.toggle("hidden", role !== "admin");
+  const hideAcademicCards = !roleCanManageAcademic(role);
+  teacherAssignmentCard.classList.toggle("hidden", hideAcademicCards);
+  teacherAttendanceCard.classList.toggle("hidden", hideAcademicCards);
+  teacherGradeCard.classList.toggle("hidden", hideAcademicCards);
 }
 
-function toggleTheme() {
-    document.body.classList.toggle('light-mode');
-    const isLight = document.body.classList.contains('light-mode');
-    themeToggle.querySelector('i').className = isLight ? 'fas fa-sun' : 'fas fa-moon';
-    localStorage.setItem('chatTheme', isLight ? 'light' : 'dark');
+function renderList(listNode, rows, formatter) {
+  listNode.innerHTML = "";
+  if (!rows.length) {
+    const li = document.createElement("li");
+    li.textContent = "No records found.";
+    listNode.appendChild(li);
+    return;
+  }
+
+  rows.forEach((row) => {
+    const li = document.createElement("li");
+    li.innerHTML = formatter(row);
+    listNode.appendChild(li);
+  });
 }
 
-// ============ AUTH TAB SWITCHING ============
-function switchAuthTab(tab) {
-    authTabs.forEach(t => t.classList.remove('active'));
-    document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+async function loadDashboardData() {
+  const role = state.profile?.role;
+  const profileId = state.profile?.id;
 
-    if (tab === 'login') {
-        loginForm.classList.add('active');
-        signupForm.classList.remove('active');
-    } else {
-        loginForm.classList.remove('active');
-        signupForm.classList.add('active');
-    }
+  const [{ data: announcements }, { data: assignments }] = await Promise.all([
+    supabase.from("announcements").select("id,title,body,created_at").order("created_at", { ascending: false }).limit(20),
+    supabase.from("assignments").select("id,title,class_name,due_date,created_at").order("created_at", { ascending: false }).limit(20),
+  ]);
 
-    authStatus.textContent = '';
+  renderList(
+    announcementList,
+    announcements || [],
+    (row) => `<strong>${row.title}</strong><br/><small>${row.body}</small>`
+  );
+
+  renderList(
+    assignmentList,
+    assignments || [],
+    (row) => `<strong>${row.title}</strong> (${row.class_name})<br/><small>Due: ${row.due_date}</small>`
+  );
+
+  let attendanceQuery = supabase
+    .from("attendance")
+    .select("id,status,attendance_date,student_id")
+    .order("attendance_date", { ascending: false })
+    .limit(20);
+
+  let gradesQuery = supabase
+    .from("grades")
+    .select("id,subject,score,created_at,student_id")
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (role === "student") {
+    attendanceQuery = attendanceQuery.eq("student_id", profileId);
+    gradesQuery = gradesQuery.eq("student_id", profileId);
+  }
+
+  const [{ data: attendance }, { data: grades }] = await Promise.all([attendanceQuery, gradesQuery]);
+
+  renderList(
+    attendanceList,
+    attendance || [],
+    (row) => `<strong>${row.status}</strong> <small>on ${row.attendance_date}</small><br/><small>Student ID: ${row.student_id}</small>`
+  );
+
+  renderList(
+    gradeList,
+    grades || [],
+    (row) => `<strong>${row.subject}</strong>: ${row.score}/100<br/><small>Student ID: ${row.student_id}</small>`
+  );
 }
 
-// ============ AUTHENTICATION ============
-async function handleLogin() {
-    const email = loginEmail.value.trim();
-    const password = loginPassword.value.trim();
-    const username = loginUsername.value.trim();
+async function loadUserProfile(userId) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id,full_name,role,class_name")
+    .eq("id", userId)
+    .single();
 
-    if (!email || !password || !username) {
-        showAuthStatus('Please fill all fields', 'error');
-        return;
-    }
+  if (error) throw error;
 
+  state.profile = data;
+  welcomeTitle.textContent = `Welcome, ${data.full_name}`;
+  welcomeMeta.textContent = `${data.role.toUpperCase()}${data.class_name ? ` • ${data.class_name}` : ""}`;
+
+  toggleRoleCards(data.role);
+}
+
+async function startAppForSession(session) {
+  state.user = session.user;
+  await loadUserProfile(session.user.id);
+  await loadDashboardData();
+
+  authSection.classList.add("hidden");
+  appSection.classList.remove("hidden");
+}
+
+async function boot() {
+  if (SUPABASE_URL.includes("YOUR-PROJECT") || SUPABASE_ANON_KEY.includes("YOUR_SUPABASE")) {
+    showAuthMessage("Update SUPABASE_URL and SUPABASE_ANON_KEY in app.js before using.", true);
+    return;
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
     try {
-        showAuthStatus('Logging in...', 'info');
-        await signInWithEmailAndPassword(auth, email, password);
-        displayName = username;
-        localStorage.setItem('chatUsername', username);
+      await startAppForSession(session);
     } catch (error) {
-        console.error('Login error:', error);
-        if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-            showAuthStatus('Invalid credentials. Try signing up!', 'error');
-        } else {
-            showAuthStatus(error.message, 'error');
-        }
+      showAuthMessage(error.message, true);
     }
+  }
 }
 
-async function handleSignup() {
-    const email = signupEmail.value.trim();
-    const password = signupPassword.value.trim();
-    const username = signupUsername.value.trim();
+loginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  const selectedRole = roleSelect.value;
 
-    if (!email || !password || !username) {
-        showAuthStatus('Please fill all fields', 'error');
-        return;
+  try {
+    showAuthMessage("Signing in...");
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", data.user.id)
+      .single();
+
+    if (profileError) throw profileError;
+
+    if (profile.role !== selectedRole) {
+      await supabase.auth.signOut();
+      throw new Error(`Role mismatch. This account is registered as '${profile.role}'.`);
     }
 
-    if (password.length < 6) {
-        showAuthStatus('Password must be at least 6 characters', 'error');
-        return;
-    }
-
-    try {
-        showAuthStatus('Creating account...', 'info');
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        displayName = username;
-        localStorage.setItem('chatUsername', username);
-
-        // Create user document
-        await setDoc(doc(db, 'users', userCredential.user.uid), {
-            username: username,
-            email: email,
-            createdAt: serverTimestamp()
-        });
-
-        showAuthStatus('Account created successfully!', 'success');
-    } catch (error) {
-        console.error('Signup error:', error);
-        if (error.code === 'auth/email-already-in-use') {
-            showAuthStatus('Email already in use. Try logging in!', 'error');
-        } else {
-            showAuthStatus(error.message, 'error');
-        }
-    }
-}
-
-function showAuthStatus(message, type) {
-    authStatus.textContent = message;
-    authStatus.style.background = type === 'error' ? 'rgba(239, 68, 68, 0.2)' :
-        type === 'success' ? 'rgba(16, 185, 129, 0.2)' :
-        'rgba(59, 130, 246, 0.2)';
-    authStatus.style.color = type === 'error' ? '#ef4444' :
-        type === 'success' ? '#10b981' :
-        '#3b82f6';
-}
-
-// ============ AUTH STATE LISTENER ============
-onAuthStateChanged(auth, async(user) => {
-    if (user) {
-        currentUser = user;
-
-        // Get username
-        if (!displayName) {
-            displayName = localStorage.getItem('chatUsername') || user.email.split('@')[0];
-        }
-
-        // Show chat screen
-        authScreen.style.display = 'none';
-        chatScreen.style.display = 'flex';
-
-        // Update UI
-        const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random&bold=true&size=128`;
-        sidebarAvatar.src = avatarUrl;
-        headerAvatar.src = avatarUrl;
-        sidebarUsername.textContent = displayName;
-
-        // Set online status
-        await setOnlineStatus(true);
-
-        // Load messages
-        loadMessages();
-
-        // Listen to online users
-        listenToOnlineUsers();
-
-        console.log('✅ User logged in:', displayName);
-    } else {
-        authScreen.style.display = 'flex';
-        chatScreen.style.display = 'none';
-        currentUser = null;
-
-        if (unsubscribeMessages) unsubscribeMessages();
-        if (unsubscribeOnline) unsubscribeOnline();
-    }
+    await startAppForSession(data.session);
+    showAuthMessage("Login successful");
+  } catch (error) {
+    showAuthMessage(error.message, true);
+  }
 });
 
-// ============ ONLINE STATUS ============
-async function setOnlineStatus(isOnline) {
-    if (!currentUser) return;
+refreshBtn.addEventListener("click", async () => {
+  await loadDashboardData();
+});
 
-    const userOnlineRef = doc(db, 'online', currentUser.uid);
+logoutBtn.addEventListener("click", async () => {
+  await supabase.auth.signOut();
+  state = { user: null, profile: null };
+  appSection.classList.add("hidden");
+  authSection.classList.remove("hidden");
+  showAuthMessage("Logged out");
+});
 
-    if (isOnline) {
-        await setDoc(userOnlineRef, {
-            username: displayName,
-            avatar: sidebarAvatar.src,
-            lastSeen: serverTimestamp()
-        });
+announcementForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (state.profile?.role !== "admin") return;
 
-        // Remove on disconnect
-        window.addEventListener('beforeunload', async() => {
-            await deleteDoc(userOnlineRef);
-        });
-    } else {
-        await deleteDoc(userOnlineRef);
-    }
-}
+  const title = document.getElementById("announcementTitle").value.trim();
+  const body = document.getElementById("announcementBody").value.trim();
 
-function listenToOnlineUsers() {
-    if (unsubscribeOnline) unsubscribeOnline();
+  const { error } = await supabase.from("announcements").insert({
+    title,
+    body,
+    posted_by: state.profile.id,
+  });
 
-    const onlineRef = collection(db, 'online');
+  if (error) {
+    alert(error.message);
+    return;
+  }
 
-    unsubscribeOnline = onSnapshot(onlineRef, (snapshot) => {
-        onlineUsers.innerHTML = '';
-        let count = 0;
+  announcementForm.reset();
+  await loadDashboardData();
+});
 
-        snapshot.forEach((doc) => {
-            if (doc.id !== currentUser.uid) {
-                const user = doc.data();
-                const userEl = document.createElement('div');
-                userEl.className = 'online-user';
-                userEl.innerHTML = `
-                    <img src="${user.avatar}" alt="${user.username}">
-                    <div class="online-user-info">
-                        <div class="online-user-name">${user.username}</div>
-                        <div class="online-user-status">Online</div>
-                    </div>
-                `;
-                onlineUsers.appendChild(userEl);
-                count++;
-            }
-        });
+assignmentForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!roleCanManageAcademic(state.profile?.role)) return;
 
-        onlineCount.textContent = count + 1; // +1 for current user
-    });
-}
+  const payload = {
+    title: document.getElementById("assignmentTitle").value.trim(),
+    class_name: document.getElementById("assignmentClass").value.trim(),
+    due_date: document.getElementById("assignmentDueDate").value,
+    created_by: state.profile.id,
+  };
 
-// ============ LOGOUT ============
-async function handleLogout() {
-    try {
-        await setOnlineStatus(false);
-        await signOut(auth);
-        messagesContainer.innerHTML = '';
-        loginEmail.value = '';
-        loginPassword.value = '';
-        signupEmail.value = '';
-        signupPassword.value = '';
-        authStatus.textContent = '';
-    } catch (error) {
-        console.error('Logout error:', error);
-    }
-}
+  const { error } = await supabase.from("assignments").insert(payload);
+  if (error) return alert(error.message);
 
-// ============ ROOM SWITCHING ============
-function switchRoom(room) {
-    if (room === currentRoom) return;
+  assignmentForm.reset();
+  await loadDashboardData();
+});
 
-    currentRoom = room;
+attendanceForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!roleCanManageAcademic(state.profile?.role)) return;
 
-    // Update UI
-    roomButtons.forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.room === room);
-    });
+  const payload = {
+    student_id: document.getElementById("attendanceStudentId").value.trim(),
+    attendance_date: document.getElementById("attendanceDate").value,
+    status: document.getElementById("attendanceStatus").value,
+    marked_by: state.profile.id,
+  };
 
-    const roomIcon = {
-        general: 'fa-comments',
-        tech: 'fa-code',
-        random: 'fa-random',
-        gaming: 'fa-gamepad',
-        music: 'fa-music'
-    };
+  const { error } = await supabase.from("attendance").insert(payload);
+  if (error) return alert(error.message);
 
-    currentRoomName.innerHTML = `<i class="fas ${roomIcon[room]}"></i> ${room.charAt(0).toUpperCase() + room.slice(1)}`;
-    roomDescription.textContent = roomDescriptions[room];
+  attendanceForm.reset();
+  await loadDashboardData();
+});
 
-    // Close mobile menu
-    sidebar.classList.remove('active');
+gradeForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!roleCanManageAcademic(state.profile?.role)) return;
 
-    // Load new room messages
-    loadMessages();
-}
+  const payload = {
+    student_id: document.getElementById("gradeStudentId").value.trim(),
+    subject: document.getElementById("gradeSubject").value.trim(),
+    score: Number(document.getElementById("gradeScore").value),
+    graded_by: state.profile.id,
+  };
 
-// ============ LOAD MESSAGES (REAL-TIME) ============
-function loadMessages() {
-    if (unsubscribeMessages) unsubscribeMessages();
+  const { error } = await supabase.from("grades").insert(payload);
+  if (error) return alert(error.message);
 
-    messagesContainer.innerHTML = '<div class="welcome-message"><i class="fas fa-spinner fa-spin"></i><h3>Loading messages...</h3></div>';
+  gradeForm.reset();
+  await loadDashboardData();
+});
 
-    const messagesRef = collection(db, `rooms/${currentRoom}/messages`);
-    const q = query(messagesRef, orderBy('timestamp', 'desc'), limit(50));
-
-    unsubscribeMessages = onSnapshot(q, (snapshot) => {
-        const messages = [];
-
-        snapshot.forEach((doc) => {
-            messages.push({ id: doc.id, ...doc.data() });
-        });
-
-        // Reverse to show oldest first
-        messages.reverse();
-
-        // Clear and render
-        messagesContainer.innerHTML = '';
-
-        if (messages.length === 0) {
-            messagesContainer.innerHTML = `
-                <div class="welcome-message">
-                    <i class="fas fa-comments"></i>
-                    <h3>No messages yet</h3>
-                    <p>Be the first to say something!</p>
-                </div>
-            `;
-        } else {
-            messages.forEach(msg => renderMessage(msg));
-            scrollToBottom();
-        }
-    }, (error) => {
-        console.error('Error loading messages:', error);
-        messagesContainer.innerHTML = '<div class="welcome-message"><i class="fas fa-exclamation-circle"></i><h3>Error loading messages</h3></div>';
-    });
-}
-
-// ============ RENDER MESSAGE ============
-function renderMessage(msg) {
-    const isMe = msg.userId === currentUser.uid;
-
-    const messageWrapper = document.createElement('div');
-    messageWrapper.className = `message-wrapper ${isMe ? 'me' : ''}`;
-    messageWrapper.dataset.id = msg.id;
-
-    const time = msg.timestamp ? new Date(msg.timestamp.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Now';
-
-    const avatarUrl = msg.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(msg.sender)}&background=random`;
-
-    messageWrapper.innerHTML = `
-        <img src="${avatarUrl}" alt="${msg.sender}" class="message-avatar">
-        <div class="message-content">
-            <div class="message-header">
-                <span class="message-sender">${msg.sender}</span>
-                <span class="message-time">${time}</span>
-            </div>
-            <div class="message-bubble">
-                ${escapeHtml(msg.text)}
-                ${msg.imageUrl ? `<img src="${msg.imageUrl}" class="message-image" onclick="window.open('${msg.imageUrl}', '_blank')">` : ''}
-            </div>
-            ${isMe ? `
-                <div class="message-actions">
-                    <button class="message-action-btn" onclick="deleteMessage('${msg.id}')">
-                        <i class="fas fa-trash"></i> Delete
-                    </button>
-                </div>
-            ` : ''}
-        </div>
-    `;
-    
-    messagesContainer.appendChild(messageWrapper);
-    
-    // Play notification sound for new messages
-    if (!isMe && msg.timestamp && (Date.now() - lastMessageTime > 1000)) {
-        playNotification();
-        lastMessageTime = Date.now();
-    }
-}
-
-// ============ SEND MESSAGE ============
-async function sendMessage() {
-    const text = messageInput.value.trim();
-    
-    if (!text) return;
-    if (!currentUser) {
-        showToast('Please login first!');
-        return;
-    }
-    
-    try {
-        const messagesRef = collection(db, `rooms/${currentRoom}/messages`);
-        
-        await addDoc(messagesRef, {
-            text: text,
-            sender: displayName,
-            userId: currentUser.uid,
-            avatar: sidebarAvatar.src,
-            timestamp: serverTimestamp()
-        });
-        
-        messageInput.value = '';
-        updateCharCount();
-        typingIndicator.style.display = 'none';
-        
-    } catch (error) {
-        console.error('Error sending message:', error);
-        showToast('Failed to send message');
-    }
-}
-
-// ============ FILE UPLOAD ============
-async function handleFileUpload(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    // Check file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-        showToast('File size must be less than 5MB');
-        return;
-    }
-    
-    try {
-        showToast('Uploading file...');
-        
-        const storageRef = ref(storage, `chat-uploads/${currentUser.uid}/${Date.now()}_${file.name}`);
-        await uploadBytes(storageRef, file);
-        const downloadURL = await getDownloadURL(storageRef);
-        
-        const messagesRef = collection(db, `rooms/${currentRoom}/messages`);
-        await addDoc(messagesRef, {
-            text: `Shared a file: ${file.name}`,
-            imageUrl: downloadURL,
-            sender: displayName,
-            userId: currentUser.uid,
-            avatar: sidebarAvatar.src,
-            timestamp: serverTimestamp()
-        });
-        
-        showToast('File uploaded successfully!');
-        fileInput.value = '';
-        
-    } catch (error) {
-        console.error('Error uploading file:', error);
-        showToast('Failed to upload file');
-    }
-}
-
-// ============ DELETE MESSAGE ============
-window.deleteMessage = async function(messageId) {
-    if (!confirm('Delete this message?')) return;
-    
-    try {
-        await deleteDoc(doc(db, `rooms/${currentRoom}/messages`, messageId));
-        showToast('Message deleted');
-    } catch (error) {
-        console.error('Error deleting message:', error);
-        showToast('Failed to delete message');
-    }
-};
-
-// ============ TYPING INDICATOR ============
-function handleTyping() {
-    updateCharCount();
-    
-    typingIndicator.style.display = 'flex';
-    
-    if (typingTimeout) clearTimeout(typingTimeout);
-    
-    typingTimeout = setTimeout(() => {
-        typingIndicator.style.display = 'none';
-    }, 2000);
-}
-
-// ============ KEY PRESS HANDLER ============
-function handleKeyPress(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-    }
-}
-
-// ============ SEARCH MESSAGES ============
-function handleSearch() {
-    const searchTerm = searchInput.value.toLowerCase();
-    const messages = document.querySelectorAll('.message-wrapper');
-    
-    messages.forEach(msg => {
-        const text = msg.querySelector('.message-bubble').textContent.toLowerCase();
-        if (text.includes(searchTerm)) {
-            msg.style.display = 'flex';
-        } else {
-            msg.style.display = 'none';
-        }
-    });
-}
-
-// ============ UTILITY FUNCTIONS ============
-function updateCharCount() {
-    charCount.textContent = messageInput.value.length;
-}
-
-function scrollToBottom() {
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function playNotification() {
-    if (notificationsEnabled) {
-        notificationSound.play().catch(() => {});
-    }
-}
-
-function showToast(message) {
-    // Simple toast notification
-    const toast = document.createElement('div');
-    toast.style.cssText = `
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        background: var(--accent-primary);
-        color: white;
-        padding: 12px 20px;
-        border-radius: 8px;
-        box-shadow: var(--shadow-lg);
-        z-index: 10000;
-        animation: slideIn 0.3s ease;
-    `;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    
-    setTimeout(() => {
-        toast.style.animation = 'fadeOut 0.3s ease';
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
-}
-
-// ============ INITIALIZE ============
-init();
-
-console.log('🔥 Ultimate Chat App is ready!');
+boot();
